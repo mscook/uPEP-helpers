@@ -3,12 +3,19 @@ fabfile for doing uPEP things
 
 Mitchell Stanton-Cook
 m.stantoncook@gmail.com
+
+TODO: No real verification of the successful completion of step
+(i.e. verify all files downloaded, verify compaction, compilation, uPEPFinding
+& BLAST DB creation). 
+
 """
 
 import os
 import sys
 import gzip
 import bisect
+import glob
+import ast
 
 import ftputil
 from   fabric.api import task
@@ -17,9 +24,12 @@ from   fabric.api import task
 HOST = "ftp.ncbi.nlm.nih.gov"
 BASE = "/refseq/release/"
 
+
 def setup(outpath, home, db):
     """
     Build outpath and chdir to it
+
+    This is relative to the fabfile path!
 
     :param outpath: the outpath
     :param home: the directory this fabfile is executed in
@@ -44,7 +54,7 @@ def setup(outpath, home, db):
 
 def download_db(db):
     """
-    Download a db file
+    Download all RefSeq database files to the current working driectory
 
     :param db: the database identifier
     """
@@ -57,12 +67,13 @@ def download_db(db):
         if f.endswith("rna.gbff.gz"):
             host.download(f, f, 'b')
 
+
 @task
 def get_NCBI_RefSeq_release():
     """
     Prints & returns the NCBI RefSeq release number
     
-    :rtype: the release number as a string
+    :rtype: the release number as an integer
     """
     url = BASE+"release-notes/"
     host = ftputil.FTPHost(HOST, 'anonymous', 'beaton.lab@gmail.com')
@@ -73,73 +84,110 @@ def get_NCBI_RefSeq_release():
         if f.startswith("RefSeq-"):
             number = f.split('release')[-1][:-4]
             break
-    print 'Release %s' % (number)
-    return number
+    print 'Remote Release %s' % (number)
+    return int(number)
 
 @task
 def get_uPEP_RefSeq_release(location='/var/RefSeq/.refseq_version'):
     """
-    Prints @ returns the uPEP RefSeq release number
+    Prints & returns the uPEP RefSeq release number
     
     :param location: [default=/var/RefSeq/.refseq_version] the file that the 
                      RefSeq version is stored in
 
-    :rtype: the release number as a string
+    :rtype: the release number as an integer
     """
     number = -1
     with open(location) as fin:
         number = fin.readlines()[0].strip()
-    print 'Release %s' % (number)
-    return number
+    print 'Local Release %s' % (number)
+    return int(number)
+
 
 @task
-def get_dbs(outpath=None, key=None):
+def build_upep_dbs(outpath=None, key=None, override=False):
     """
-    Get the databases
+    Update the uPEP databases
+
+    Alternatively if a key is given (one of):
+        * RefSeq-complete
+        * RefSeq-fungi
+        * RefSeq-invertebrate
+        * RefSeq-plant
+        * RefSeq-vertebrate_mammalian
+        * RefSeq-vertebrate_other
+    
+    the task will only upgrade the givenDB.
+
+    You can set the outpath with outpath='/dump/me/here'
+
+    Setting override to True will update even in local version is the same as
+    the NCBI RefSeq version
+
+    This task:
+        * checks that you need to update (unless overridden)
+        * sets up a download directory
+        * fetches all required RefSeq databases from NCBI
+        * compacts
+        * compiles
+        * uPEP finds
+        * converts to BLAST db
+        * moves the files to the production server (creating correct 
+          permissions, symbolic links etc)
+        * stores the new local RefSeq version
+
+    :param outpath: the base location to dump the files to (must exist)
+                    i.e. /var/RefSeq/staging (full path as a string). If not 
+                    given will be dumped in the fabfile directory
+    :param key: [def=None] a specific database to grab. If not given will grab 
+                all
+    :param override: [default = False] upgrade even if local and remote are 
+                     the same version
     """
-    home = os.getcwd()
-    dbs = ['RefSeq-complete',
-           'RefSeq-fungi'
-           'RefSeq-invertebrate',
-           'RefSeq-microbial',
-           'RefSeq-mitochondrion',
-           'RefSeq-plant',
-           'RefSeq-plasmid',
-           'RefSeq-plastid',
-           'RefSeq-protozoa',
-           'RefSeq-vertebrate_mammalian',
-           'RefSeq-vertebrate_other',
-           'RefSeq-viral']
-    if key:
-        print "Working with database "+key
-        if key in dbs:
-            wd = setup(outpath, home, key)
-            download_db(key)
-            compacted = compact_RefSeq(wd)
-            compile_RefSeq(compacted)
-            os.chdir(home)
+    override = ast.literal_eval(str(override))
+    remote = get_NCBI_RefSeq_release()
+    local  = get_uPEP_RefSeq_release()
+    if remote > local or override == True:
+        home = os.getcwd()
+        dbs = ['RefSeq-complete',
+               'RefSeq-fungi',
+               'RefSeq-invertebrate',
+               'RefSeq-plant',
+               'RefSeq-vertebrate_mammalian',
+               'RefSeq-vertebrate_other']
+        if key:
+            print "Working with database "+key
+            if key in dbs:
+                wd = setup(outpath, home, key)
+                download_db(key)
+                compacted = compact_RefSeq(wd)
+                compile_RefSeq(compacted)
+                os.chdir(home)
+            else:
+                print "Not a defined db"
+                sys.exit(1)
         else:
-            print "Not a defined db"
-            sys.exit(1)
+            for db in dbs:
+                print "Working with database"+db
+                wd = setup(outpath, home, db)
+                download_db(db)
+                compacted = compact_RefSeq(wd)
+                compile_RefSeq(compacted)
+                os.chdir(home)
+        os.system("mv RefSeq* ../tmp")
+        _, proc_list = uPEP_finder()
+        build_blast_db(proc_list)
+        # Here is where we should go into maintainence mode 
+        finalise_update()
     else:
-        for db in dbs:
-            print "Working with database"+db
-            setup(outpath, home, db)
-            download_db(db)
-            compacted = compact_RefSeq(wd)
-            compile_RefSeq(compacted)
-            os.chdir(home)
-
-# The Follwoing are from Adam Skarshewski
-#   compaction
-#   compilation
-#   uPEPfinder
+        print "No updrade required"
 
 
-@task
 def compact_RefSeq(RefSeq_directory):
     """
     Removes 'junk' from the RefSeq files
+
+    Provided by Adam Skarshewski
 
     Originally:
 
@@ -147,6 +195,8 @@ def compact_RefSeq(RefSeq_directory):
     cd {directory}
     compaction.py ../{RefSeq_directory}/
     cd ..
+
+    :param RefSeq_directory: the full path as a string to a RefSeq db directory
     """
     stored = RefSeq_directory.split('-')[-1]
     try:
@@ -224,12 +274,18 @@ def compact_RefSeq(RefSeq_directory):
     return stored
 
 
-@task
 def compile_RefSeq(compacted_dir):
     """
+    Prepares a compacted RefSeq database for uPEP finding
+
+    Provided by Adam Skarshewski
+
     Originally:
    
     compilation.py {compacted_dir}/
+
+    :param compacted_dir: the full path as a string to the compacted RefSeq db 
+                          directory
     """
     accessionlist = []
     GIlist = []
@@ -284,6 +340,11 @@ def compile_RefSeq(compacted_dir):
 
 
 def seqtocaps(seq):
+    """
+    Helper method for uPEP_finder
+    
+    Provided by Adam Skarshewski
+    """
     temp = ''
     for i in seq:
         if ord(i) > 96:
@@ -292,6 +353,11 @@ def seqtocaps(seq):
     return temp
 
 def returnjoins(string):
+    """
+    Helper method for uPEP_finder
+
+    Provided by Adam Skarshewski
+    """
     temp = []
     for i in range(0,len(string)):
         if string[i] == '(':
@@ -310,6 +376,11 @@ def returnjoins(string):
     return temp2
 
 def converttoint(string):
+    """
+    Helper method for uPEP_finder
+
+    Provided by Adam Skarshewski
+    """
     if string[0] == '<':
         return 0
     elif string[0]=='>':
@@ -319,14 +390,18 @@ def converttoint(string):
 
 def uPEP_finder():
     """
+    Find uPEP sequences and generate a DB ready for consumption by BLAST
+    
     To finish
     """
     specieslist = []
+    proc_list   = []
     for top, dirs, files in os.walk('.'):
         for directory in dirs:
             print directory
             if top == '.' and directory:
                 savefile = open(directory + '.db', 'wb')
+                proc_list.append(directory + '.db')
             for root, dirs, files in os.walk(directory):
                 for filename in files:
                     print filename
@@ -420,13 +495,35 @@ def uPEP_finder():
                     finally:
                         scanfile.close()
             savefile.close()
-    return specieslist
+    return specieslist, proc_list
 
 
-
-@task 
-def deploy(outpath=None, key=None):
+def build_blast_db(upep_database_list):
     """
+    Using Blast2 build a blastdb from a uPEP db
     """
-    get_dbs(outpath, key)
+    for e in upep_database_list:
+        os.system("formatdb -p F -i "+e)
+
+
+def finalise_update(location='/var/RefSeq/.refseq_version'):
+    """
+    Updates the RefSeq DB version store, and copies of updated databases
+
+    :param location: the full path as a string to the RefSeq DB version store
+    """
+    # Update RefSeq Version
+    with open(location, 'w') as fout:
+        fout.write(str(get_NCBI_RefSeq_release())+'\n')
+    # Create symbolic links (if needed)
+    if os.path.isfile("completed-ACCcompletecompact.dict.rna.gbff"):
+        os.system("ln -s completed-ACCcompletecompact.dict.rna.gbff ACCcompletecompact.dict.rna.gbff")
+        os.system("ln -s completed-GIcompletecompact.dict.rna.gbff GIcompletecompact.dict.rna.gbff")
+    # Copy over *only* databases
+    skip = ['fabfile.py', 'fabfile.pyc', 'README.rst', 'formatdb.log']
+    cur = glob.glob('*')
+    for e in cur:
+        if e not in skip:
+            os.system("chmod 775 "+e)
+            os.system("mv "+e+" ../")
 
