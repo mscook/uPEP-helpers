@@ -123,5 +123,9 @@ Future improvements:
       should be put into maintainence mode.
 
 March 2016 Update:
-- Revamp storage path and system. Adding MySQL as database for handling ACC and GI id together with input queries from the main uPEP website. Adding alternative starting codons. Adding configuration file for setting program working location, alternative codon list, and MYSQL login info.
+    Improve speed of building GI and ACC database.
+    Revamp storage path and system. 
+    Adding MySQL as database for handling ACC and GI id together with input queries from the main uPEP website. 
+    Adding alternative starting codons. 
+    Adding configuration file for setting program working location, alternative codon list, and MYSQL login info.
 
