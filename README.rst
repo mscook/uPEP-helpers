@@ -119,3 +119,8 @@ Future improvements:
     * When pushing the new uPEP databases to production, the uPEP web app
       should be put into maintainence mode.
 
+March 2016 Update:
+- Revamp storage path and system.
+- Adding MySQL as database for handling ACC and GI id together with input queries from the main uPEP website.
+- Adding alternative starting codons.
+
