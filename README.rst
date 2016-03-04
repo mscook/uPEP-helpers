@@ -5,12 +5,17 @@ A core fabfile for managing uPEP databases
 
 Mitchell Stanton-Cook (m.stantoncook@gmail.com)
 
+
+Toan Khoi Quoc Phung (toan.phungkhoiquoctoan@gmail.com)
+
 Requirements (python libraries):
     * ftputil
     * fabric
+    * mysql.connector
 
 Requirements (3rd party):
     * blast2 (legacy)
+    * MySQL
 
 Overview
 --------
@@ -116,4 +121,11 @@ Future improvements:
       and BLAST DB creation)
     * When pushing the new uPEP databases to production, the uPEP web app
       should be put into maintainence mode.
+
+March 2016 Update:
+    Improve speed of building GI and ACC database.
+    Revamp storage path and system. 
+    Adding MySQL as database for handling ACC and GI id together with input queries from the main uPEP website. 
+    Adding alternative starting codons. 
+    Adding configuration file for setting program working location, alternative codon list, and MYSQL login info.
 
