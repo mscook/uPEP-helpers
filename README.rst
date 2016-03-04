@@ -8,6 +8,7 @@ Mitchell Stanton-Cook (m.stantoncook@gmail.com)
 Requirements (python libraries):
     * ftputil
     * fabric
+    * mysql.connector
 
 Requirements (3rd party):
     * blast2 (legacy)
