@@ -11,6 +11,7 @@ Requirements (python libraries):
 
 Requirements (3rd party):
     * blast2 (legacy)
+    * MySQL
 
 Overview
 --------
