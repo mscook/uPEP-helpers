@@ -4,6 +4,7 @@ uPEP-helpers
 A core fabfile for managing uPEP databases
 
 Mitchell Stanton-Cook (m.stantoncook@gmail.com)
+Toan Khoi Quoc Phung (toan.phungkhoiquoctoan@gmail.com)
 
 Requirements (python libraries):
     * ftputil
